@@ -15,6 +15,11 @@
 
 	The output values for the columns in file 05 requires the compilation of highly confusing and calculations. I am not getting the correct numbers. I'm not really even sure about the basis for inclusion into the list.
 	Promising, however, is program 5793 "Paramedic" for which I've arrived at twice the value of # PGM hrs via DE displayed on the report. The fact that it's an integer multiple means I ought to be close.
+
+	Update 8/17/2016: Nearly complete, at least until I have to worry about gen-ed and prof hours. I've managed to adjust the filters to where everything showing up on the ORION output is displaying here,
+	with the correct values for PGM Hrs, # PGM hrs via DE and % PGM Hrs via DE. # Gen Ed Hrs via DE and % Gen Ed Hrs via DE will doubtlessly depend on calculating which electives to apply to each program.
+	Also, right now the script is compiling all the programs for which at least 12.5% of the program hours can be completed online. This is what the original ORION program does when 'D' is passed as the parameter
+	for delivery method, but if 'T' (Traditional) is passed for Delivery Method instead, then it should pull in programs for which this is not the case. I'll probably accomplish this with an If-Else.
 */
 
 
@@ -32,6 +37,7 @@ IF OBJECT_ID('tempdb..#programcourserequirements') IS NOT NULL
 CREATE TABLE #programs
 (
 	PGM_CD CHAR(4)
+	,PGM_NAME VARCHAR(MAX)
 	,AWD_TY VARCHAR(MAX)
 	,HRS_REQD VARCHAR(MAX)
 )
@@ -51,6 +57,7 @@ BEGIN
 	INSERT INTO #programs
 		SELECT
 			prog.PGM_CD
+			,CASE WHEN prog.PGM_OFFCL_TTL <> '' THEN prog.PGM_OFFCL_TTL ELSE prog.PGM_TRK_TTL END
 			,prog.AWD_TY
 			,prog.PGM_TTL_MIN_CNTCT_HRS_REQD
 		FROM
@@ -68,6 +75,7 @@ BEGIN
 	INSERT INTO #programs
 		SELECT
 			prog.PGM_CD
+			,CASE WHEN prog.PGM_OFFCL_TTL <> '' THEN prog.PGM_OFFCL_TTL ELSE prog.PGM_TRK_TTL END
 			,prog.AWD_TY
 			,prog.PGM_TTL_MIN_CNTCT_HRS_REQD
 		FROM
@@ -122,7 +130,7 @@ SELECT
 	,@max_term
 	,p1.PGM_CD
 	,p2.AWD_TY
-	,''
+	,p2.PGM_NAME
 	,MIN(p2.HRS_REQD)
 	,CASE
 		WHEN SUM(CASE WHEN p1.OfferedOnline = 'Y' THEN CAST(p1.HRS AS FLOAT) ELSE 0.0 END) > MIN(p2.HRS_REQD) THEN MIN(p2.HRS_REQD)
@@ -134,6 +142,7 @@ FROM
 	INNER JOIN #programs p2 ON p2.PGM_CD = p1.PGM_CD
 GROUP BY
 	p1.PGM_CD
+	,p2.PGM_NAME
 	,p2.AWD_TY
 HAVING
 	SUM(CASE WHEN p1.OfferedOnline = 'Y' THEN CAST(p1.HRS AS FLOAT) ELSE 0.0 END) / AVG(CAST(p2.HRS_REQD AS FLOAT)) >= .125
