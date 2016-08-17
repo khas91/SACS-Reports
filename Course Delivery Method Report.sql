@@ -22,127 +22,175 @@
 	for delivery method, but if 'T' (Traditional) is passed for Delivery Method instead, then it should pull in programs for which this is not the case. I'll probably accomplish this with an If-Else.
 */
 
+USE MIS
 
-DECLARE @awd_type VARCHAR(MAX) = 'VC'
-DECLARE @pgm_cd VARCHAR(MAX) = ''
-DECLARE @min_term CHAR(5) = '20103'
-DECLARE @max_term CHAR(5) = '20153'
+IF OBJECT_ID('dbo.sp_Course_Delivery_Method') IS NOT NULL
+	DROP PROCEDURE dbo.sp_Course_Delievery_Method
+GO
 
+CREATE PROCEDURE dbo.sp_Course_Delievery_Method
+	@awd_type VARCHAR(MAX) = 'VC'
+	,@pgm_cd VARCHAR(MAX) = ''
+	,@min_term CHAR(5) = '20103'
+	,@max_term CHAR(5) = '20153'
+	,@delivery_method CHAR(1) = 'D'
+AS
+BEGIN
 
 IF OBJECT_ID('tempdb..#programs') IS NOT NULL
 	DROP TABLE #programs
 IF OBJECT_ID('tempdb..#programcourserequirements') IS NOT NULL
 	DROP TABLE #programcourserequirements
 
-CREATE TABLE #programs
-(
-	PGM_CD CHAR(4)
-	,PGM_NAME VARCHAR(MAX)
-	,AWD_TY VARCHAR(MAX)
-	,HRS_REQD VARCHAR(MAX)
-)
+	CREATE TABLE #programs
+	(
+		PGM_CD CHAR(4)
+		,PGM_NAME VARCHAR(MAX)
+		,AWD_TY VARCHAR(MAX)
+		,HRS_REQD VARCHAR(MAX)
+	)
 
+	CREATE TABLE #programcourserequirements
+	(
+		PGM_CD CHAR(4)
+		,CRS_ID VARCHAR(MAX)
+		,HRS VARCHAR(MAX)
+		,OfferedOnline VARCHAR(MAX)
+	)
 
-CREATE TABLE #programcourserequirements
-(
-	PGM_CD CHAR(4)
-	,CRS_ID VARCHAR(MAX)
-	,HRS VARCHAR(MAX)
-	,OfferedOnline VARCHAR(MAX)
-)
+	IF (@pgm_cd <> '')
+	BEGIN
 
-IF (@pgm_cd <> '')
-BEGIN
-
-	INSERT INTO #programs
-		SELECT
-			prog.PGM_CD
-			,CASE WHEN prog.PGM_OFFCL_TTL <> '' THEN prog.PGM_OFFCL_TTL ELSE prog.PGM_TRK_TTL END
-			,prog.AWD_TY
-			,prog.PGM_TTL_MIN_CNTCT_HRS_REQD
-		FROM
-			MIS.dbo.ST_PROGRAMS_A_136 prog
-		WHERE
-			prog.PGM_CD = @pgm_cd
-			AND prog.EFF_TRM_D <> ''
-			AND prog.EFF_TRM_D <= @max_term
-			AND prog.AWD_TY = @awd_type
-			AND (prog.END_TRM = '' OR prog.END_TRM >= @max_term)
-END
-ELSE IF (@awd_type <> '')
-BEGIN
+		INSERT INTO #programs
+			SELECT
+				prog.PGM_CD
+				,CASE WHEN prog.PGM_OFFCL_TTL <> '' THEN prog.PGM_OFFCL_TTL ELSE prog.PGM_TRK_TTL END
+				,prog.AWD_TY
+				,prog.PGM_TTL_MIN_CNTCT_HRS_REQD
+			FROM
+				MIS.dbo.ST_PROGRAMS_A_136 prog
+			WHERE
+				prog.PGM_CD = @pgm_cd
+				AND prog.EFF_TRM_D <> ''
+				AND prog.EFF_TRM_D <= @max_term
+				AND prog.AWD_TY = @awd_type
+				AND (prog.END_TRM = '' OR prog.END_TRM >= @max_term)
+	END
+	ELSE IF (@awd_type <> '')
+	BEGIN
 	
-	INSERT INTO #programs
+		INSERT INTO #programs
+			SELECT
+				prog.PGM_CD
+				,CASE WHEN prog.PGM_OFFCL_TTL <> '' THEN prog.PGM_OFFCL_TTL ELSE prog.PGM_TRK_TTL END
+				,prog.AWD_TY
+				,prog.PGM_TTL_MIN_CNTCT_HRS_REQD
+			FROM
+				MIS.dbo.ST_PROGRAMS_A_136 prog
+			WHERE
+				prog.EFF_TRM_D <> ''
+				AND prog.EFF_TRM_D <= @max_term
+				AND prog.AWD_TY = @awd_type
+				AND (prog.END_TRM = '' OR prog.END_TRM >= @max_term)
+
+	END
+
+	INSERT INTO #programcourserequirements
 		SELECT
-			prog.PGM_CD
-			,CASE WHEN prog.PGM_OFFCL_TTL <> '' THEN prog.PGM_OFFCL_TTL ELSE prog.PGM_TRK_TTL END
-			,prog.AWD_TY
-			,prog.PGM_TTL_MIN_CNTCT_HRS_REQD
+			p.PGM_CD
+			,prog.CRS_ID_X
+			,MAX((course.MIN_CNTCT_HRS + course.MAX_CNTCT_HRS) / 2.0) AS 'HRS'
+			,'' AS 'OfferedOnline'
 		FROM
-			MIS.dbo.ST_PROGRAMS_A_136 prog
+			#programs p
+			INNER JOIN MIS.dbo.ST_PROGRAMS_A_136 prog ON prog.PGM_CD_X = p.PGM_CD
+			INNER JOIN MIS.dbo.ST_COURSE_A_150 course ON prog.CRS_ID_X = course.CRS_ID
 		WHERE
-			prog.EFF_TRM_D <> ''
-			AND prog.EFF_TRM_D <= @max_term
-			AND prog.AWD_TY = @awd_type
-			AND (prog.END_TRM = '' OR prog.END_TRM >= @max_term)
+			prog.CRS_ID_X <> ''
+		GROUP BY
+			p.PGM_CD
+			,prog.CRS_ID_X
 
-END
+	UPDATE #programcourserequirements
+		SET OfferedOnline = (
+			SELECT
+				CASE
+					WHEN SUM(CASE WHEN class.NON_FF_PERC <= 100 AND class.NON_FF_PERC >= 50 THEN 1 ELSE 0 END) > 0 THEN 'Y'
+					ELSE 'N'
+				END
+			FROM
+				#programcourserequirements p
+				INNER JOIN MIS.dbo.ST_CLASS_A_151 class ON class.crsId = p.CRS_ID
+			WHERE
+				class.effTrm <= @max_term
+				AND class.effTrm >= @min_term
+				AND class.CLS_STAT <> 'C'
+				AND class.crsId = procourse.CRS_ID
+			GROUP BY
+				p.CRS_ID
+		)
+		FROM
+			#programcourserequirements procourse
 
-INSERT INTO #programcourserequirements
-	SELECT
-		p.PGM_CD
-		,prog.CRS_ID_X
-		,MAX((course.MIN_CNTCT_HRS + course.MAX_CNTCT_HRS) / 2.0) AS 'HRS'
-		,'' AS 'OfferedOnline'
-	FROM
-		#programs p
-		INNER JOIN MIS.dbo.ST_PROGRAMS_A_136 prog ON prog.PGM_CD_X = p.PGM_CD
-		INNER JOIN MIS.dbo.ST_COURSE_A_150 course ON prog.CRS_ID_X = course.CRS_ID
-	WHERE
-		prog.CRS_ID_X <> ''
-	GROUP BY
-		p.PGM_CD
-		,prog.CRS_ID_X
+	IF (@delivery_method = 'D')
+	BEGIN
 
-UPDATE #programcourserequirements
-	SET OfferedOnline = (
 		SELECT
-			CASE
-				WHEN SUM(CASE WHEN class.NON_FF_PERC <= 100 AND class.NON_FF_PERC >= 50 THEN 1 ELSE 0 END) > 0 THEN 'Y'
-				ELSE 'N'
+			@min_term
+			,@max_term
+			,p1.PGM_CD
+			,p2.AWD_TY
+			,p2.PGM_NAME
+			,MIN(p2.HRS_REQD)
+			,CASE
+				WHEN SUM(CASE WHEN p1.OfferedOnline = 'Y' THEN CAST(p1.HRS AS FLOAT) ELSE 0.0 END) > MIN(p2.HRS_REQD) THEN MIN(p2.HRS_REQD)
+				ELSE SUM(CASE WHEN p1.OfferedOnline = 'Y' THEN CAST(p1.HRS AS FLOAT) ELSE 0.0 END)
+			END
+			,CASE
+				WHEN (SUM(CASE WHEN p1.OfferedOnline = 'Y' THEN CAST(p1.HRS AS FLOAT) ELSE 0.0 END) / MIN(p2.HRS_REQD)) * 100 > 100 THEN 100
+				ELSE (SUM(CASE WHEN p1.OfferedOnline = 'Y' THEN CAST(p1.HRS AS FLOAT) ELSE 0.0 END) / MIN(p2.HRS_REQD)) * 100
 			END
 		FROM
-			#programcourserequirements p
-			INNER JOIN MIS.dbo.ST_CLASS_A_151 class ON class.crsId = p.CRS_ID
-		WHERE
-			class.effTrm <= @max_term
-			AND class.effTrm >= @min_term
-			AND class.CLS_STAT <> 'C'
-			AND class.crsId = procourse.CRS_ID
+			#programcourserequirements p1
+			INNER JOIN #programs p2 ON p2.PGM_CD = p1.PGM_CD
 		GROUP BY
-			p.CRS_ID
-	)
-	FROM
-		#programcourserequirements procourse
+			p1.PGM_CD
+			,p2.PGM_NAME
+			,p2.AWD_TY
+		HAVING
+			SUM(CASE WHEN p1.OfferedOnline = 'Y' THEN CAST(p1.HRS AS FLOAT) ELSE 0.0 END) / AVG(CAST(p2.HRS_REQD AS FLOAT)) >= .125
 
-SELECT
-	@min_term
-	,@max_term
-	,p1.PGM_CD
-	,p2.AWD_TY
-	,p2.PGM_NAME
-	,MIN(p2.HRS_REQD)
-	,CASE
-		WHEN SUM(CASE WHEN p1.OfferedOnline = 'Y' THEN CAST(p1.HRS AS FLOAT) ELSE 0.0 END) > MIN(p2.HRS_REQD) THEN MIN(p2.HRS_REQD)
-		ELSE SUM(CASE WHEN p1.OfferedOnline = 'Y' THEN CAST(p1.HRS AS FLOAT) ELSE 0.0 END)
 	END
-	,(SUM(CASE WHEN p1.OfferedOnline = 'Y' THEN CAST(p1.HRS AS FLOAT) ELSE 0.0 END) / MIN(p2.HRS_REQD)) * 100
-FROM
-	#programcourserequirements p1
-	INNER JOIN #programs p2 ON p2.PGM_CD = p1.PGM_CD
-GROUP BY
-	p1.PGM_CD
-	,p2.PGM_NAME
-	,p2.AWD_TY
-HAVING
-	SUM(CASE WHEN p1.OfferedOnline = 'Y' THEN CAST(p1.HRS AS FLOAT) ELSE 0.0 END) / AVG(CAST(p2.HRS_REQD AS FLOAT)) >= .125
+	ELSE
+	BEGIN
+	
+		SELECT
+			@min_term
+			,@max_term
+			,p1.PGM_CD
+			,p2.AWD_TY
+			,p2.PGM_NAME
+			,MIN(p2.HRS_REQD)
+			,CASE
+				WHEN SUM(CASE WHEN p1.OfferedOnline = 'Y' THEN CAST(p1.HRS AS FLOAT) ELSE 0.0 END) > MIN(p2.HRS_REQD) THEN MIN(p2.HRS_REQD)
+				ELSE SUM(CASE WHEN p1.OfferedOnline = 'Y' THEN CAST(p1.HRS AS FLOAT) ELSE 0.0 END)
+			END
+			,CASE
+				WHEN (SUM(CASE WHEN p1.OfferedOnline = 'Y' THEN CAST(p1.HRS AS FLOAT) ELSE 0.0 END) / MIN(p2.HRS_REQD)) * 100 > 100 THEN 100
+				ELSE (SUM(CASE WHEN p1.OfferedOnline = 'Y' THEN CAST(p1.HRS AS FLOAT) ELSE 0.0 END) / MIN(p2.HRS_REQD)) * 100
+			END
+		FROM
+			#programcourserequirements p1
+			INNER JOIN #programs p2 ON p2.PGM_CD = p1.PGM_CD
+		GROUP BY
+			p1.PGM_CD
+			,p2.PGM_NAME
+			,p2.AWD_TY
+		HAVING
+			SUM(CASE WHEN p1.OfferedOnline = 'Y' THEN CAST(p1.HRS AS FLOAT) ELSE 0.0 END) / AVG(CAST(p2.HRS_REQD AS FLOAT)) < .125
+
+	END
+END
+GO
+
+EXEC dbo.sp_Course_Delievery_Method @awd_type = 'VC', @pgm_cd = '',@min_term = '20103', @max_term = '20153', @delivery_method = 'T'
