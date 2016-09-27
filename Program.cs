@@ -5,19 +5,19 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace SACSReports
+namespace PLR
 {
-    class Program
+    public class Program
     {
         static void Main(string[] args)
         {
             //Parameters
-            String minTerm = "20121";
-            String maxTerm = "20171";
+            String minTerm = "20141";
+            String maxTerm = "20172";
             String programCode = "";
             String campusCenter = "";
             String awardType = "";
-            bool runForHighSchool = false;
+            bool runForHighSchool = true;
  
             //derived parameters
             int minTermYear = int.Parse(minTerm.Substring(0, 4));
@@ -30,49 +30,47 @@ namespace SACSReports
             Dictionary<String, Course> globalCourseDictionary = new Dictionary<string, Course>();
             Dictionary<Tuple<String, String>, List<String>> classesByCampusCenterAndTerm = new Dictionary<Tuple<string, string>, List<string>>();
             List<String> campusCenters = new List<String>();
-            List<String> AAElectives = (awardType == "AA") || (awardType == "") ? new List<String>() : null;
+            Dictionary<Tuple<String,String>,List<String>> AAElectivesByCampusAndTerm = new Dictionary<Tuple<string,string>,List<string>>();
             List<AcademicProgram> programs = new List<AcademicProgram>();
             Dictionary<Tuple<String, String, String>, float> TotalProgramHoursForProgramByCampusCenter = new Dictionary<Tuple<string, string, string>, float>();
             Dictionary<Tuple<String, String, String>, float> TotalGeneralEducationHoursForProgramByCampusCenter = new Dictionary<Tuple<string, string, string>, float>();
             Dictionary<Tuple<String, String, String>, float> TotalCoreAndProfessionalForProgramByCampusCenter = new Dictionary<Tuple<string, string, string>, float>();
             Dictionary<Tuple<String, String, String>, List<String>> SatisfiedCoursesForProgramByCatalogYearAndCampusCenter = new Dictionary<Tuple<string, string, string>, List<string>>();
+            Dictionary<Tuple<String, String, String>, List<String>> AACoursesByAACatalogAndCampus = new Dictionary<Tuple<string, string, string>, List<string>>();
 
-            String[] highschoolCodesArray = new String[]{
-            "D1427",
-            "C1411",
-            "A1618",
-            "D1401",
-            "C1634",
-            "C1414",
-            "A1103",
-            "B1403",
-            "A1104",
-            "A1105",
-            "D1103",
-            "B1408",
-            "A1110",
-            "A1111",
-            "A1112",
-            "Z7000",
-            "A1303",
-            "A1116",
-            "A1301",
-            "A1117",
-            "Z7004",
-            "A1118",
-            "B1613",
-            "A1119",
-            "A1114",
-            "Z7015",
-            "Z7002",
-            "B1410",
-            "F1410",
-            "A1106",
-            "A1122",
-            "B1414"};
-
-            List<String> highSchoolCodes = new List<string>(highschoolCodesArray); 
-
+            String[] highschoolCodes = new String[]{"D1427",
+                                                    "C1411",
+                                                    "A1618",
+                                                    "D1401",
+                                                    "C1634",
+                                                    "C1414",
+                                                    "A1103",
+                                                    "B1403",
+                                                    "A1104",
+                                                    "A1105",
+                                                    "D1103",
+                                                    "B1408",
+                                                    "A1110",
+                                                    "A1111",
+                                                    "A1112",
+                                                    "Z7000",
+                                                    "A1303",
+                                                    "A1116",
+                                                    "A1301",
+                                                    "A1117",
+                                                    "Z7004",
+                                                    "A1118",
+                                                    "B1613",
+                                                    "A1119",
+                                                    "A1114",
+                                                    "Z7015",
+                                                    "Z7002",
+                                                    "B1410",
+                                                    "F1410",
+                                                    "A1106",
+                                                    "A1122",
+                                                    "B1414"};
+            
             SqlConnection conn = new SqlConnection("Server=vulcan;database=MIS;Trusted_Connection=yes");
 
             try
@@ -110,7 +108,7 @@ namespace SACSReports
                                             + "WHERE                                                                                                                                  "
                                             + "    prog.EFF_TRM_D <> ''                                                                                                               "
                                             + "    AND prog.EFF_TRM_D <= '" + maxTerm + "'                                                                                            "
-                                            + "    AND (prog.END_TRM = '' OR prog.END_TRM >= '" + maxTerm + "')                                                                       "
+                                            + "    AND (prog.END_TRM = '' OR prog.END_TRM >= '" + minTerm + "')                                                                       "
                                             + "    AND prog.AWD_TY NOT IN ('ND','NC','HS')                                                                                            "
                                            // + programCode == "" ? " " : ("   AND prog.PGM_CD = '" + programCode + "' ") /* causes SQL exception when uncommented. Don't know why */
                                             + "ORDER BY                                                                                                                               "
@@ -241,18 +239,25 @@ namespace SACSReports
 
                 if (runForHighSchool)
                 {
-                    if (highSchoolCodes.Contains(campCntr))
+                    if (!highschoolCodes.Contains(campCntr))
                     {
-                        campusCenters.Add(campCntr);
+                        continue;
                     }
                 }
                 else
                 {
-                    if (!highSchoolCodes.Contains(campCntr))
+                    if (highschoolCodes.Contains(campCntr))
                     {
-                        campusCenters.Add(campCntr);
+                        continue;
                     }
                 }
+
+                if (campCntr.Substring(1, 4) == "7300")
+                {
+                    continue;
+                }
+                campusCenters.Add(campCntr);
+
             }
 
             reader.Close();
@@ -265,7 +270,7 @@ namespace SACSReports
 		                          + "         WHEN course.CRED_TY IN ('01','02','03','14','15') THEN class.EVAL_CRED_HRS                                                "
 		                          + "         ELSE class.CNTCT_HRS                                                                                                      "
 	                              + "     END AS HRS                                                                                                                    "
-	                              + ((awardType == "" || awardType == "AA" ) ? ",course.USED_FOR_AA_ELECTIVE " : "")
+	                              + "     ,course.USED_FOR_AA_ELECTIVE                                                                                                  " 
                                   + " FROM                                                                                                                              "
 	                              + "     MIS.dbo.ST_CLASS_A_151 class                                                                                                  "
 	                              + "     INNER JOIN MIS.dbo.ST_COURSE_A_150 course ON course.CRS_ID = class.crsID                                                      "
@@ -282,15 +287,15 @@ namespace SACSReports
                 String curCampusCenter = reader["campCntr"].ToString();
                 String term = reader["efftrm"].ToString();
                 String courseID = reader["crsID"].ToString().Trim();
+                Tuple<String, String> key = new Tuple<string, string>(curCampusCenter, term);
                 float hours = float.Parse(reader["HRS"].ToString());
-                bool AAElective = (awardType == "" || awardType == "AA") ? reader["USED_FOR_AA_ELECTIVE"].ToString() == "Y" : false;
+                bool AAElective = reader["USED_FOR_AA_ELECTIVE"].ToString() == "Y";
 
                 if (!globalCourseDictionary.ContainsKey(courseID))
                 {
                     continue;
                 }
 
-                Tuple<String, String> key = new Tuple<string,string>(curCampusCenter, term);
                 List<String> courses;
 
                 if (classesByCampusCenterAndTerm.ContainsKey(key))
@@ -301,6 +306,17 @@ namespace SACSReports
                 {
                     courses = new List<string>();
                     classesByCampusCenterAndTerm.Add(key, courses);
+                }
+                if (AAElective)
+                {
+                    if (!AAElectivesByCampusAndTerm.ContainsKey(key))
+                    {
+                        AAElectivesByCampusAndTerm.Add(key, new List<string>());
+                    }
+                    if (!AAElectivesByCampusAndTerm[key].Contains(courseID))
+                    {
+                        AAElectivesByCampusAndTerm[key].Add(courseID);
+                    }
                 }
 
                 courses.Add(courseID);
@@ -323,11 +339,11 @@ namespace SACSReports
                         float totalGenEdHours = 0;
                         float totalCoreAndProfessionalHours = 0;
                         
-                        int curYear = minTermYear;
-                        int curTerm = minTermTerm;
+                        int curYear = catalog.effectiveTermYear;
+                        int curTerm = catalog.effectiveTermTerm;
 
                         List<String> satisfiedCourses = new List<string>();
-                        List<String> AAElectivesAtCampus = new List<string>();
+                        List<String> AACoursesForProgram = new List<string>();
 
                         Tuple<String, String, String> key = new Tuple<string, string, string>(curProgram.progCode, catalog.effectiveTerm, camp);
                         SatisfiedCoursesForProgramByCatalogYearAndCampusCenter.Add(key, new List<String>());
@@ -357,9 +373,18 @@ namespace SACSReports
                                     satisfiedCourses.Add(course);
                                     SatisfiedCoursesForProgramByCatalogYearAndCampusCenter[key].Add(course);
                                 }
-                                if (curProgram.progCode == "1108" && AAElectives.Contains(course) && !AAElectivesAtCampus.Contains(course))
+                            }
+
+                            if (curProgram.progCode == "1108" && AAElectivesByCampusAndTerm.ContainsKey(yearkey))
+                            {
+                                foreach (String course in AAElectivesByCampusAndTerm[yearkey])
                                 {
-                                    AAElectivesAtCampus.Add(course);
+                                    if (!AACoursesForProgram.Contains(course))
+                                    {
+                                        AACoursesForProgram.Add(course);
+                                        totalProgramHours += globalCourseDictionary[course].hours;
+                                        totalCoreAndProfessionalHours += globalCourseDictionary[course].hours;
+                                    }
                                 }
                             }
                                                                                    
@@ -367,7 +392,10 @@ namespace SACSReports
                             curTerm = curTerm == 3 ? 1 : curTerm + 1;
                         }
 
-                        
+                        if (curProgram.progCode == "1108")
+                        {
+                            AACoursesByAACatalogAndCampus.Add(key, AACoursesForProgram);
+                        }
 
                         if (satisfiedCourses.Count == 0)
                         {
@@ -379,11 +407,6 @@ namespace SACSReports
 
                         foreach (AcademicProgram.CatalogChange.Area area in catalog.areas)
                         {
-                            if (curProgram.awardType == "VC" && area.areaType == "01")
-                            {
-                                continue;
-                            }
-
                             bool genEdArea = false;
 
                             switch (area.areaType.Substring(0, 2))
@@ -543,17 +566,6 @@ namespace SACSReports
                             {
                                 totalCoreAndProfessionalHours += andGroups.Max();
                             }
-
-                            
-
-                            if (curProgram.progCode == "1108")
-                            {
-                                foreach (String course in AAElectivesAtCampus)
-                                {
-                                    totalProgramHours += globalCourseDictionary[course].hours;
-                                    totalCoreAndProfessionalHours += globalCourseDictionary[course].hours;
-                                }
-                            }
                         }
 
                         TotalProgramHoursForProgramByCampusCenter.Add(key, totalProgramHours);
@@ -565,7 +577,7 @@ namespace SACSReports
 
             using (System.IO.StreamWriter file = new System.IO.StreamWriter("output.csv"))
             {
-                file.WriteLine("PGM CD, AWD TYPE, CATALOG YEAR, CAMP CNTR, TRM FROM, TRM TO, AREA, GROUP, CRS ID USED, CRS HRS, TOT PGM HRS, TOT GEN-ED HRS, TOT PROF HRS,");
+                file.WriteLine("PGM CD, AWD TYPE, CATALOG YEAR, CAMP CNTR, TRM FROM, TRM TO, AREA, GROUP, CRS ID USED, CRS HRS, TOT PGM HRS, TOT GEN-ED HRS, TOT PROF HRS");
 
                 foreach (AcademicProgram curProgram in programs)
                 {
@@ -605,20 +617,19 @@ namespace SACSReports
                                 }
                                 if (curProgram.progCode == "1108")
                                 {
-                                    foreach (String course in AAElectives)
+                                    foreach (String course in AACoursesByAACatalogAndCampus[key])
                                     {
                                         int curYear = minTermYear;
                                         int curTerm = minTermTerm;
 
-                                        while ((curYear < maxTermYear || (curYear == maxTermYear && curTerm <= maxTermTerm))
-                                            && (curYear < catalog.endTermYear || (curYear == catalog.endTermYear && curTerm <= catalog.endTermTerm)))
+                                        if (!SatisfiedCoursesForProgramByCatalogYearAndCampusCenter[key].Contains(course))
                                         {
-                                            file.WriteLine(curProgram.progCode + "," + curProgram.awardType + "," + catalog.effectiveTerm + "," + camp + "," + minTerm + maxTerm + ",ELEC,,"
-                                                + course + "," + globalCourseDictionary[course].hours.ToString() + "," + (TotalProgramHoursForProgramByCampusCenter[key] > catalog.totalProgramHours 
-                                                ? catalog.totalProgramHours.ToString() : TotalProgramHoursForProgramByCampusCenter[key].ToString()) + "," + (TotalGeneralEducationHoursForProgramByCampusCenter[key] 
-                                                > catalog.totalGeneralEducationHours ? catalog.totalGeneralEducationHours.ToString(): TotalGeneralEducationHoursForProgramByCampusCenter[key].ToString()) 
-                                                + "," + (TotalCoreAndProfessionalForProgramByCampusCenter[key] > catalog.totalCoreAndProfessionalHours ? catalog.totalCoreAndProfessionalHours.ToString()
-                                                : TotalCoreAndProfessionalForProgramByCampusCenter[key].ToString()));
+                                          file.WriteLine(curProgram.progCode + "," + curProgram.awardType + "," + catalog.effectiveTerm + "," + camp + "," + minTerm + "," + maxTerm + ",ELEC,,"
+                                            + course + "," + globalCourseDictionary[course].hours.ToString() + "," + (TotalProgramHoursForProgramByCampusCenter[key] > catalog.totalProgramHours 
+                                            ? catalog.totalProgramHours.ToString() : TotalProgramHoursForProgramByCampusCenter[key].ToString()) + "," + (TotalGeneralEducationHoursForProgramByCampusCenter[key] 
+                                            > catalog.totalGeneralEducationHours ? catalog.totalGeneralEducationHours.ToString(): TotalGeneralEducationHoursForProgramByCampusCenter[key].ToString()) 
+                                            + "," + (TotalCoreAndProfessionalForProgramByCampusCenter[key] > catalog.totalCoreAndProfessionalHours ? catalog.totalCoreAndProfessionalHours.ToString()
+                                            : TotalCoreAndProfessionalForProgramByCampusCenter[key].ToString()));  
                                         }
                                     }
                                 }
@@ -629,67 +640,69 @@ namespace SACSReports
 
                 file.Close();
             }
-           
         }
 
-        public class AcademicProgram
+
+    }
+    public class AcademicProgram
+    {
+        public String progCode;
+        public String progName;
+        public String awardType;
+        public List<CatalogChange> catalogChanges;
+        public Dictionary<String, CatalogChange> catalogDictionary;
+
+        public class CatalogChange
         {
-            public String progCode;
-            public String awardType;
-            public List<CatalogChange> catalogChanges;
-            public Dictionary<String, CatalogChange> catalogDictionary;
+            public String effectiveTerm;
+            public String endTerm;
+            public bool financialAidApproved;
+            public int effectiveTermYear;
+            public int effectiveTermTerm;
+            public int endTermYear;
+            public int endTermTerm;
+            public List<Area> areas;
+            public List<String> flatCourseArray;
+            public Dictionary<int, Area> areaDictionary;
+            public int totalProgramHours;
+            public int totalGeneralEducationHours;
+            public int totalCoreAndProfessionalHours;
 
-            public class CatalogChange
+            public class Area
             {
-                public String effectiveTerm;
-                public String endTerm;
-                public int effectiveTermYear;
-                public int effectiveTermTerm;
-                public int endTermYear;
-                public int endTermTerm;
-                public List<Area> areas;
-                public List<String> flatCourseArray;
-                public Dictionary<int, Area> areaDictionary;
-                public int totalProgramHours;
-                public int totalGeneralEducationHours;
-                public int totalCoreAndProfessionalHours;
-
-                public class Area
-                {
-                    public int areaNum;
-                    public String areaType;
-                    public List<Group> groups;
-                    public Dictionary<int, Group> groupDictionary;
+                public int areaNum;
+                public String areaType;
+                public List<Group> groups;
+                public Dictionary<int, Group> groupDictionary;
                     
-                    public class Group
-                    {
-                        public int groupNum;
-                        public String optCode;
-                        public String operatorCode;
-                        public List<Course> courses;
-                        public Dictionary<String, Course> courseDictionary;
+                public class Group
+                {
+                    public int groupNum;
+                    public String optCode;
+                    public String operatorCode;
+                    public List<Course> courses;
+                    public Dictionary<String, Course> courseDictionary;
                         
-                    }
                 }
             }
         }
+    }
 
-        public class Course
+    public class Course
+    {
+        public String courseID;
+        public float hours;
+
+        public static float findAndSumFirstNCourses(List<Course> courses, int n)
         {
-            public String courseID;
-            public float hours;
+            float[] courseHours = new float[courses.Count];
 
-            public static float findAndSumFirstNCourses(List<Course> courses, int n)
+            for (int i = 0; i < courseHours.Length; i++)
             {
-                float[] courseHours = new float[courses.Count];
-
-                for (int i = 0; i < courseHours.Length; i++)
-                {
-                    courseHours[i] = courses[i].hours;
-                }
-
-                return courseHours.OrderByDescending(x => x).Take(n).Sum();
+                courseHours[i] = courses[i].hours;
             }
+
+            return courseHours.OrderByDescending(x => x).Take(n).Sum();
         }
     }
 }
